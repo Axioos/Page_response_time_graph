@@ -7,21 +7,20 @@ from dotenv import load_dotenv
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
 
-# Asignar las URLs desde las variables de entorno
+# Asignar las variables desde el .env
 URL_TCP = os.getenv("URL_TCP")
 URL_QUIC = os.getenv("URL_QUIC")
+PRUEBAS_TOTALES = int(os.getenv("PRUEBAS_TOTALES", 10))
 
-# Validar que las variables existan para evitar errores de ejecución
+# Validar que las URLs existan
 if not URL_TCP or not URL_QUIC:
     raise ValueError("Error: Asegúrate de definir URL_TCP y URL_QUIC en tu archivo .env")
-
-PRUEBAS_TOTALES = 10 # Define cuántas pruebas de carga seguidas quieres hacer
 
 def test_load_time(context, url, protocolo):
     page = context.new_page()
     start_time = time.time()
     try:
-        # wait_until="networkidle" asegura que espere hasta que todas las imágenes terminen de cargar
+        # wait_until="networkidle" asegura que espere hasta que la red esté inactiva
         page.goto(url, wait_until="networkidle", timeout=60000)
     except Exception as e:
         print(f"  [!] Error o timeout en {protocolo}: {e}")
@@ -46,22 +45,21 @@ def ejecutar_experimento():
     
     ax.set_xlim(1, PRUEBAS_TOTALES)
     ax.set_ylim(0, 2)
-    ax.set_xlabel('Número de Prueba')
-    ax.set_ylabel('Tiempo Total de Carga (Segundos)')
-    ax.set_title('Impacto del Head-of-Line Blocking en Redes Inestables')
+    ax.set_xlabel('n')
+    ax.set_ylabel('Tiempo de carga (Segundos)')
+    ax.set_title(f'testeo tcp vs quic({PRUEBAS_TOTALES} iteraciones)')
     ax.grid(True, linestyle='--', alpha=0.6)
     ax.legend()
 
     # Iniciar el navegador de pruebas
     with sync_playwright() as p:
-        # Lanzamos Chromium obligándolo a aceptar conexiones QUIC
-        browser = p.chromium.launch(headless=True, args=['--enable-quic'])
+        # Lanzamos Chrome con soporte QUIC
+        browser = p.chromium.launch(channel="chrome", headless=True, args=['--enable-quic'])
         
         for i in range(1, PRUEBAS_TOTALES + 1):
             print(f"\n--- Ejecutando Prueba {i}/{PRUEBAS_TOTALES} ---")
             intentos.append(i)
             
-            # Creamos un contexto nuevo en cada iteración para asegurar que no haya caché (Disable Cache)
             context = browser.new_context()
             
             # 1. Probar TCP
@@ -76,16 +74,15 @@ def ejecutar_experimento():
             
             context.close()
 
-            # Actualizar el gráfico en tiempo real
+            # Actualizar el gráfico
             line_tcp.set_data(intentos, tiempos_tcp)
             line_quic.set_data(intentos, tiempos_quic)
             
-            # Ajustar el eje Y dinámicamente si los tiempos son muy altos
             max_time = max(max(tiempos_tcp), max(tiempos_quic))
             if max_time > ax.get_ylim()[1]:
                 ax.set_ylim(0, max_time + 1)
             
-            plt.pause(0.1) # Dibuja los nuevos puntos y pausa brevemente
+            plt.pause(0.1)
 
         browser.close()
 
